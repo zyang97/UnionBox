@@ -1,0 +1,14 @@
+# external library
+/extern
+
+# output file
+/out
+/output
+/runs
+
+# dataset
+/test
+/test2
+
+# weights
+*.pth
