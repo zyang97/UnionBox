@@ -161,7 +161,26 @@ class Boxes:
         obj = OBJ(points, lines+1)
         obj.save_obj(path)
 
+def nms_3d(preds, threshold=0.5):
+    # based on largest volume
+    boxes = Boxes(preds)
+    boxes = boxes.boxes
+    boxes.sort(key=lambda x: -torch.prod(x.dim))
+    mask = [True] * len(boxes)
 
+    for i, box in enumerate(boxes):
+        if not mask[i]:
+            continue
+        for j, box2 in enumerate(boxes[i+1:]):
+            if not mask[j]:
+                continue
+            from extern.pytorch3d.pytorch3d.ops import box3d_overlap
+            _, iou_3d = box3d_overlap(torch.tensor(np.array([box.convert_to_iou3d_format()])),
+                                      torch.tensor(np.array([box2.convert_to_iou3d_format()])))
+            if iou_3d > threshold:
+                mask[j] = False
+    ret = preds[0][mask].unsqueeze(0)
+    return ret
 
 
 if __name__ == '__main__':

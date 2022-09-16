@@ -178,8 +178,8 @@ for iter in range(params.numTrainIter):
             network.train()
 
             # save boxes mesh
-            from models.boxes import Boxes
-
+            from models.boxes import Boxes, nms_3d
+            preds = nms_3d(preds, 0.3)
             boxes = Boxes(cuboids)
             boxes.save_obj(os.path.join(outDirTrain, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
@@ -207,7 +207,8 @@ for iter in range(params.numTrainIter):
             network.train()
 
             # save boxes mesh
-            from models.boxes import Boxes
+            from models.boxes import Boxes, nms_3d
+            preds = nms_3d(preds, 0.3)
             boxes = Boxes(cuboids)
             boxes.save_obj(os.path.join(outDirVal, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
