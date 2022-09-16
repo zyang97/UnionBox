@@ -15,14 +15,16 @@ def weightsInit(m):
 
 def homo_warping(fea, proj):
     """
-    :param fea:   [B, 7 * N] /  [x, y, z, w, h, l, r]
+    :param fea:   [B, 8 * N] /  [x, y, z, w, h, l, r]
     :param proj:  [B, 4 * 4]
     :return: [7 * N]
     """
     batch = fea.shape[0]
-    N = fea.shape[1] // 7
+    N = fea.shape[1] // 8
 
-    fea = fea.view(batch, N, 7) # [B, N, 7]
+    fea = fea.view(batch, N, 8) # [B, N, 7]
+    score = fea[:,:,0:1]
+    fea = fea[:,:,1:]
 
     with torch.no_grad():
         rot = proj[:, :3, :3] # [B, 3, 3]
@@ -59,9 +61,9 @@ def homo_warping(fea, proj):
         # proj_xyz.contiguous()
         world_r = world_r.permute(0, 2, 1) # [B, N, 1]
         world_r.contiguous()
-        proj_fea = torch.cat([proj_xyz, whl, world_r], dim=2) # [B, N, 8]
+        proj_fea = torch.cat([score, proj_xyz, whl, world_r], dim=2) # [B, N, 8]
 
-    proj_fea = proj_fea.view(batch, N*7)
+    proj_fea = proj_fea.view(batch, N*8)
 
     # with torch.no_grad():
     #     rot = proj[:3, :3] # [B, 3, 3]

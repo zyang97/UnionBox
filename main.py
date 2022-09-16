@@ -11,6 +11,44 @@ import os
 import numpy as np
 from tensorboardX import SummaryWriter
 
+if True: # set output directory
+    outputDir = 'output\\weights'
+    if os.path.exists(outputDir):
+        shutil.rmtree(outputDir)
+    os.makedirs(outputDir)
+
+    sampledPointsMeshDir = 'out\\sampled_points_mesh'
+    if os.path.exists(sampledPointsMeshDir):
+        shutil.rmtree(sampledPointsMeshDir)
+    os.makedirs(sampledPointsMeshDir)
+
+    outDirVal = 'out\\out_val'
+    if os.path.exists(outDirVal):
+        shutil.rmtree(outDirVal)
+    os.makedirs(outDirVal)
+
+    outDirTrain = 'out\\out_train'
+    if os.path.exists(outDirTrain):
+        shutil.rmtree(outDirTrain)
+    os.makedirs(outDirTrain)
+
+    viewOutDirVal = 'out\\out_view_val'
+    if os.path.exists(viewOutDirVal):
+        shutil.rmtree(viewOutDirVal)
+    os.makedirs(viewOutDirVal)
+
+    cuboidPointOutDirVal = 'out\\cuboidPointOut_val'
+    if os.path.exists(cuboidPointOutDirVal):
+        shutil.rmtree(cuboidPointOutDirVal)
+    os.makedirs(cuboidPointOutDirVal)
+
+    cuboidPointOutDirTrain = 'out\\cuboidPointOut_train'
+    if os.path.exists(cuboidPointOutDirTrain):
+        shutil.rmtree(cuboidPointOutDirTrain)
+    os.makedirs(cuboidPointOutDirTrain)
+
+
+
 params = get_args()
 
 writer = SummaryWriter()
@@ -18,7 +56,6 @@ dataloader = SimpleCadData(params) # not implemented
 network = Network(params).cuda()
 optimizer = torch.optim.Adam(network.parameters(), lr=params.learningRate)
 cuboidSampler = CuboidSurface(params.nSamplesChamfer, normFactor='Surf')
-
 network.train()
 
 # prev_params_featureNet = []
@@ -33,6 +70,7 @@ def train(imgs, projMatrices, dataloader, cuboidSampler, network, optimizer, nTr
 
     loss, coverage, consistency = 0, 0, 0
     i = 0
+    writePts = False
     if val:
         i += nTrain
     for img, cam in zip(imgs, projMatrices):
@@ -41,9 +79,15 @@ def train(imgs, projMatrices, dataloader, cuboidSampler, network, optimizer, nTr
 
         sampledPointsMesh = dataloader.forward(i)
         sampledPointsMesh = Variable(sampledPointsMesh.cuda())
+        # write sampled mesh points to file
+        if not writePts:
+            from models.boxes import OBJ
+            obj = OBJ(sampledPointsMesh[0], [])
+            obj.save_obj(os.path.join(sampledPointsMeshDir + '_' + str(i) + '.obj'))
+            writePts = True
 
-        _, predParts = network.forward(img, cam)
-        predParts = predParts.view(1, params.numBoxes, 7) # predParts: [bs, N, 7]
+        _, predParts = network.forward(img, cam) # predParts: [B, N, 8]
+        #predParts = predParts.view(1, params.numBoxes, 7) # predParts: [N, 7]
         optimizer.zero_grad()
 
         tsdf = tsdf_pred(sampledPointsMesh, predParts)
@@ -75,37 +119,6 @@ def train(imgs, projMatrices, dataloader, cuboidSampler, network, optimizer, nTr
     loss.backward()
     optimizer.step()
     return loss.item(), coverage.item(), consistency.item()
-
-
-outputDir = 'output\\weights'
-if os.path.exists(outputDir):
-    shutil.rmtree(outputDir)
-os.makedirs(outputDir)
-
-outDirVal = 'out\\out_val'
-if os.path.exists(outDirVal):
-    shutil.rmtree(outDirVal)
-os.makedirs(outDirVal)
-
-outDirTrain = 'out\\out_train'
-if os.path.exists(outDirTrain):
-    shutil.rmtree(outDirTrain)
-os.makedirs(outDirTrain)
-
-viewOutDirVal = 'out\\out_view_val'
-if os.path.exists(viewOutDirVal):
-    shutil.rmtree(viewOutDirVal)
-os.makedirs(viewOutDirVal)
-
-cuboidPointOutDirVal = 'out\\cuboidPointOut_val'
-if os.path.exists(cuboidPointOutDirVal):
-    shutil.rmtree(cuboidPointOutDirVal)
-os.makedirs(cuboidPointOutDirVal)
-
-cuboidPointOutDirTrain = 'out\\cuboidPointOut_train'
-if os.path.exists(cuboidPointOutDirTrain):
-    shutil.rmtree(cuboidPointOutDirTrain)
-os.makedirs(cuboidPointOutDirTrain)
 
 
 loss = 0
@@ -156,20 +169,25 @@ for iter in range(params.numTrainIter):
             network.eval()
             # _, preds = network.forward(imgs, projMatrices)
             _, preds = network.forward(imgTrain[idx], camTrain[idx])
-            preds = preds.view(1, params.numBoxes, 7)
+            #preds = preds.view(1, params.numBoxes, 8)
+            scores = preds[:, :, 0:1]
+            cuboids = preds[:, :, 1:]
+            mask = (scores > 0.5).squeeze()
+            cuboids = cuboids.squeeze()[mask]
+            cuboids = cuboids.view(1, cuboids.size(0), cuboids.size(1))
             network.train()
 
             # save boxes mesh
             from models.boxes import Boxes
 
-            boxes = Boxes(preds)
+            boxes = Boxes(cuboids)
             boxes.save_obj(os.path.join(outDirTrain, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
             # save smapled points on boxes
             from losses import partComposition
             from models.boxes import OBJ
 
-            sampledPoints = partComposition(preds, cuboidSampler)
+            sampledPoints, _ = partComposition(preds, cuboidSampler)
             obj = OBJ(sampledPoints[0], [])
             obj.save_obj(os.path.join(cuboidPointOutDirTrain, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
@@ -180,18 +198,23 @@ for iter in range(params.numTrainIter):
             network.eval()
             # _, preds = network.forward(imgs, projMatrices)
             _, preds = network.forward(imgVal[idx], camVal[idx])
-            preds = preds.view(1, params.numBoxes, 7)
+            #preds = preds.view(1, params.numBoxes, 8)
+            scores = preds[:, :, 0:1]
+            cuboids = preds[:, :, 1:]
+            mask = (scores > 0.5).squeeze()
+            cuboids = cuboids.squeeze()[mask]
+            cuboids = cuboids.view(1, cuboids.size(0), cuboids.size(1))
             network.train()
 
             # save boxes mesh
             from models.boxes import Boxes
-            boxes = Boxes(preds)
+            boxes = Boxes(cuboids)
             boxes.save_obj(os.path.join(outDirVal, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
             # save smapled points on boxes
             from losses import partComposition
             from models.boxes import OBJ
-            sampledPoints = partComposition(preds, cuboidSampler)
+            sampledPoints, _ = partComposition(preds, cuboidSampler)
             obj = OBJ(sampledPoints[0], [])
             obj.save_obj(os.path.join(cuboidPointOutDirVal, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
@@ -210,10 +233,10 @@ for iter in range(params.numTrainIter):
             features, _ = network.forward(imgVal[idx], camVal[idx])
             network.train()
             for i, viewPred in enumerate(features):
-                viewPred = viewPred.view(1, params.numBoxes, 7)
-                from models.boxes import Boxes
+                viewPred = viewPred.view(1, params.numBoxes, 8)
+                cuboids = viewPred[:, :, 1:]
                 #boxes = Boxes(viewPred.cpu().detach().numpy())
-                boxes = Boxes(viewPred)
+                boxes = Boxes(cuboids)
                 boxes.save_obj(os.path.join(viewOutDirVal, 'out_' + str(idx) + '_' + str(iter) + '_' + str(i+1) + '.obj'))
         print('{}: validation object views written.'.format(iter))
 

@@ -61,6 +61,6 @@ class CuboidSurface(nn.Module):
 
         shape_rep = shape.repeat(1, self.nSamples, 1)
         samples = shape_rep * coeff
-        #weights = self.sample_wt_module(shape)
+        weights = self.sample_wt_module(shape)
 
-        return samples #, weights
+        return samples , weights

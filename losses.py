@@ -13,9 +13,9 @@ def tsdf_transform(sampledPoints, part):
     :param part: [B, 1, 7]
     :return: []
     """
-    trans = part[:, :, 0:3]  # B x 1 x 3
-    shape = part[:, :, 3:6]  # B  x 1 x 3
-    rot = part[:, :, 6:7]  # B x 1 x 1
+    trans = part[:, :, 1:4]  # B x 1 x 3
+    shape = part[:, :, 4:7]  # B  x 1 x 3
+    rot = part[:, :, 7:8]  # B x 1 x 1
 
     pointTransformed = point_transform_world_to_local(sampledPoints, trans, rot)
 
@@ -26,11 +26,11 @@ def tsdf_transform(sampledPoints, part):
 
     return tsdf
 
-# def get_existence_weights(tsdf, part):
-#   e = part[0,:,7:8]
-#   e = e.expand(tsdf.size())
-#   e = (1-e)*10
-#   return e
+def get_existence_weights(tsdf, part):
+  e = part[0,:,0:1]
+  e = e.expand(tsdf.size())
+  e = (1-e)*10
+  return e
 
 def tsdf_pred(sampledPoints, predParts):
     """
@@ -44,12 +44,12 @@ def tsdf_pred(sampledPoints, predParts):
     tsdfParts = []
     existenceWeights = []
     for i in range(nParts):
-        tsdf = tsdf_transform(sampledPoints, predParts[i]) #
+        tsdf = tsdf_transform(sampledPoints, predParts[i]) # [1, 1, 8]
         tsdfParts.append(tsdf)
-        #existenceWeights.append(get_existence_weights(tsdf, predParts[i]))
+        existenceWeights.append(get_existence_weights(tsdf, predParts[i]))
 
-    #existenceAll = torch.cat(existenceWeights, dim=1)
-    tsdfAll = torch.cat(tsdfParts, dim=1) #+ existenceAll
+    existenceAll = torch.cat(existenceWeights, dim=1)
+    tsdfAll = torch.cat(tsdfParts, dim=1) + existenceAll
     tsdf_final = -1 * F.max_pool1d(-1 * tsdfAll, kernel_size=nParts)
     return tsdf_final
 
@@ -82,23 +82,23 @@ def partComposition(predParts, cuboidSampler):
     """
     nParts = predParts.size(1)
     allSampledPoints = []
-    #allSampledWeights = []
+    allSampledWeights = []
     predParts = torch.chunk(predParts, nParts, 1)
     for i in range(nParts):
-        trans = predParts[i][:, :, 0:3]  # B x 1 x 3
-        shape = predParts[i][:, :, 3:6]  # B  x 1 x 3
-        rot = predParts[i][:, :, 6:7]  # B x 1 x 1
-        #probs = predParts[i][:, :, 7:8]
-        samplePoints = cuboidSampler.sample_points_cuboid(shape)
+        probs = predParts[i][:, :, 0:1]
+        trans = predParts[i][:, :, 1:4]  # B x 1 x 3
+        shape = predParts[i][:, :, 4:7]  # B  x 1 x 3
+        rot = predParts[i][:, :, 7:8]  # B x 1 x 1
+        samplePoints, sampleWeights = cuboidSampler.sample_points_cuboid(shape)
         transformedSamples = point_transform_local_to_world(samplePoints, trans, rot)
-        #probs = probs.expand(sampleWeights.size())
-        #sampleWeights = sampleWeights * probs
+        probs = probs.expand(sampleWeights.size())
+        sampleWeights = sampleWeights * probs
         allSampledPoints.append(transformedSamples)
-        #allSampledWeights.append(sampleWeights)
+        allSampledWeights.append(sampleWeights)
 
     pointsOut = torch.cat(allSampledPoints, dim=1)
-    #weightsOut = torch.cat(allSampledWeights, dim=1)
-    return pointsOut #, weightsOut
+    weightsOut = torch.cat(allSampledWeights, dim=1)
+    return pointsOut, weightsOut
 
 def normalize_weights(imp_weights):
   # B x nP x 1
@@ -107,11 +107,11 @@ def normalize_weights(imp_weights):
   return norm_weights
 
 def chamfer_loss(predParts, dataloader, cuboidSampler):
-    sampledPointsCuboid = partComposition(predParts, cuboidSampler)
-    #normWeights = normalize_weights(sampledWeights).squeeze()
+    sampledPointsCuboid, sampledWeights = partComposition(predParts, cuboidSampler)
+    normWeights = normalize_weights(sampledWeights).squeeze()
     sampledPoints = sampledPointsCuboid.cuda()
     chamfer = dataloader.chamfer_forward(sampledPoints)
-    # = chamfer * normWeights
+    chamfer = chamfer * normWeights
     return chamfer, sampledPoints
 
 if __name__ == '__main__':

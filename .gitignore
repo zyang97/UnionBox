@@ -9,6 +9,7 @@
 # dataset
 /test
 /test2
+*.obj
 
 # weights
 *.pth
