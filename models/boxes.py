@@ -162,23 +162,43 @@ class Boxes:
         obj.save_obj(path)
 
 
+def nms_3d(preds, threshold=0.5):
+    # based on largest volume
+    boxes = Boxes(preds)
+    boxes = boxes.boxes
+    boxes.sort(key=lambda x: -torch.prod(x.dim))
+    mask = [True] * len(boxes)
+
+    for i, box in enumerate(boxes):
+        if not mask[i]:
+            continue
+        for j, box2 in enumerate(boxes[i+1:]):
+            if not mask[j]:
+                continue
+            from extern.pytorch3d.pytorch3d.ops import box3d_overlap
+            _, iou_3d = box3d_overlap(torch.tensor(np.array([box.convert_to_iou3d_format()])),
+                                      torch.tensor(np.array([box2.convert_to_iou3d_format()])))
+            if iou_3d > threshold:
+                mask[j] = False
+    ret = preds[0][mask].unsqueeze(0)
+    return ret
 
 
 if __name__ == '__main__':
     # boxes = Boxes(torch.Tensor([[0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 90/180 * np.pi], [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 90/180 * np.pi]]))
     # boxes.save_obj('out.obj')
-    preds = torch.tensor([[[-9.0762e-03, -4.8988e-02,  8.9295e-03,  2.8347e-01,  1.2923e-01,
-           2.9089e-01, -1.1093e+00],
-         [-8.7894e-03,  4.4291e-02,  2.2195e-01,  2.8923e-01,  2.2775e-01,
-           7.0414e-02, -5.3248e+00]]], device='cuda:0')
+    preds = torch.tensor([[[ -1.6326,   0.2987,   0.8947,   3.4665,   7.5890,   5.2823,  -6.5871],
+                             [ -3.5177,  -2.8600,   5.7947,   3.7750,   7.5632,   6.9629, -15.1123],
+                             [  2.7870,   7.9580,  -1.8690,   4.1614,  11.4128,   4.0250,   4.3629],
+                             [ -0.2533,  -5.0189,   1.3366,   1.9037,   7.5709,   2.3022,  -0.8998],
+                             [  2.4009,   0.7081,  -2.4128,   3.5692,   7.6509,   5.6303,  -3.7983],
+                             [  1.9965,  -1.2916,  -0.8033,   4.0430,   4.2715,   4.2745,  -0.3570],
+                             [  0.4659,  -0.8109,   0.4332,   7.1752,   4.6992,   4.3783,   1.3861],
+                             [ -5.2215,   5.4337,  -1.2980,   7.0939,   5.6666,   2.6346,   6.5449],
+                             [  3.1034,  -0.5812,  -1.5850,  16.9340,   4.7562,   3.8494,   8.3605],
+                             [ -1.5972,   0.3287,  -1.2872,   2.8456,   9.4504,   4.5568,   5.0369]]], device='cuda:0')
 
+    preds = nms_3d(preds, 0.1)
     boxes = Boxes(preds)
-
-    from extern.pytorch3d.pytorch3d.ops import box3d_overlap
-
-    box1 = torch.tensor([boxes.boxes[0].convert_to_iou3d_format()])
-    box2 = torch.tensor([boxes.boxes[1].convert_to_iou3d_format()])
-
-    intersection_vol, iou_3d = box3d_overlap(box1, box2)
 
     boxes.save_obj('test_out2.obj')
