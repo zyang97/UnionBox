@@ -114,6 +114,13 @@ def chamfer_loss(predParts, dataloader, cuboidSampler):
     # = chamfer * normWeights
     return chamfer, sampledPoints
 
+def volume_pred(predParts):
+    """
+    Large boxes, high loss
+    :param sampledPoints: [B, nPoints, 3]
+    :return: [B, nPoints]
+    """
+
 if __name__ == '__main__':
     # # test tsdf
     # samplePoints = torch.tensor([[[3, 3, 3], [2, 2, 2], [1, 1, 1], [0, 0, 0]]], dtype=torch.double)

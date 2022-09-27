@@ -69,9 +69,9 @@ def train(imgs, projMatrices, dataloader, cuboidSampler, network, optimizer, nTr
         # optimizer.step()
         # return loss.item(), coverageLoss.item(), consistencyLoss.item(), cuboidSampledPoints, predParts
 
-    loss /= nTrain
-    coverage /= nTrain
-    consistency /= nTrain
+    loss /= len(imgs)
+    coverage /= len(imgs)
+    consistency /= len(imgs)
     loss.backward()
     optimizer.step()
     return loss.item(), coverage.item(), consistency.item()
@@ -134,6 +134,10 @@ for iter in range(params.numTrainIter):
     writer.add_scalar("Loss/train_loss", loss, iter)
     writer.add_scalar("Loss/train_coverage", coverage, iter)
     writer.add_scalar("Loss/train_consistency", consistency, iter)
+    writer.add_scalars("combinedTrain", {'train_loss': loss,
+                                         'train_coverage': coverage,
+                                         'train_consistency': consistency},
+                       iter)
     # netparams_featureNet = []
     # for param in network.featureNet.parameters():
     #     netparams_featureNet.append(param)
@@ -161,7 +165,7 @@ for iter in range(params.numTrainIter):
 
             # save boxes mesh
             from models.boxes import Boxes, nms_3d
-            preds = nms_3d(preds, 0.5)
+            preds = nms_3d(preds, 0.1)
             boxes = Boxes(preds)
             boxes.save_obj(os.path.join(outDirTrain, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
@@ -185,7 +189,7 @@ for iter in range(params.numTrainIter):
 
             # save boxes mesh
             from models.boxes import Boxes, nms_3d
-            preds = nms_3d(preds, 0.5)
+            preds = nms_3d(preds, 0.1)
             boxes = Boxes(preds)
             boxes.save_obj(os.path.join(outDirVal, 'out_' + str(idx) + '_' + str(iter) + '.obj'))
 
@@ -214,6 +218,7 @@ for iter in range(params.numTrainIter):
                 viewPred = viewPred.view(1, params.numBoxes, 7)
                 from models.boxes import Boxes
                 #boxes = Boxes(viewPred.cpu().detach().numpy())
+                viewPred = nms_3d(viewPred, 0.1)
                 boxes = Boxes(viewPred)
                 boxes.save_obj(os.path.join(viewOutDirVal, 'out_' + str(idx) + '_' + str(iter) + '_' + str(i+1) + '.obj'))
         print('{}: validation object views written.'.format(iter))
@@ -226,6 +231,14 @@ for iter in range(params.numTrainIter):
         writer.add_scalar("Loss/val_loss", lossVal, iter)
         writer.add_scalar("Loss/val_coverage", coverageVal, iter)
         writer.add_scalar("Loss/val_consistency", consistencyVal, iter)
+        writer.add_scalars("combinedVal", {'train_loss': lossVal,
+                                           'train_coverage':coverageVal,
+                                           'train_consistency': consistencyVal},
+                           iter)
+
+        writer.add_scalars("train_val", {'train_loss': loss,
+                                             'val_loss': lossVal},
+                           iter)
 
         torch.save(network.state_dict(), "{}/iter{}.pkl".format(params.snapshotDir, iter))
         print("iter:{}\tvalLoss:{:10.7f}\tvalCoverage Loss:{:10.7f}\tvalConsistency Loss:{:10.7f}".format(int(iter), lossVal, coverageVal, consistencyVal))
